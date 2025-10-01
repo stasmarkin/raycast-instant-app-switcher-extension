@@ -108,14 +108,14 @@ async function getInstalledApps(): Promise<App[]> {
                     bundlePath: fullPath,
                   });
                 }
-              } catch (err) {
+              } catch {
                 // Skip apps we can't access
                 continue;
               }
             }
           }
         }
-      } catch (err) {
+      } catch {
         // Skip directories we can't access
         continue;
       }
@@ -132,7 +132,7 @@ async function getInstalledApps(): Promise<App[]> {
     cacheTimestamp = now;
 
     return installedApps;
-  } catch (error) {
+  } catch {
     // On timeout or error, return cached apps or empty array
     return installedAppsCache || [];
   }
@@ -210,10 +210,7 @@ async function switchToApp(app: App): Promise<void> {
 }
 
 async function getAllApps(recentApps: string[] = []): Promise<App[]> {
-  const [runningApps, installedApps] = await Promise.all([
-    getRunningApps(),
-    getInstalledApps(),
-  ]);
+  const [runningApps, installedApps] = await Promise.all([getRunningApps(), getInstalledApps()]);
 
   // Create enhanced matching for running apps
   const runningAppMap = new Map<string, App>();
@@ -229,7 +226,7 @@ async function getAllApps(recentApps: string[] = []): Promise<App[]> {
       if (bundleName !== runningApp.name) {
         runningAppAliases.set(runningApp.name, bundleName);
       }
-    } catch (error) {
+    } catch {
       // If we can't resolve, just use the display name
     }
   }
@@ -276,8 +273,7 @@ async function getAllApps(recentApps: string[] = []): Promise<App[]> {
 
   // Add any running apps that weren't found in installed apps (edge case)
   for (const runningApp of runningApps) {
-    const bundleName =
-      runningAppAliases.get(runningApp.name) || runningApp.name;
+    const bundleName = runningAppAliases.get(runningApp.name) || runningApp.name;
     if (!processedApps.has(bundleName) && !processedApps.has(runningApp.name)) {
       allApps.push({
         ...runningApp,
@@ -310,19 +306,13 @@ async function getAllApps(recentApps: string[] = []): Promise<App[]> {
   return allApps;
 }
 
-function searchApps(
-  apps: App[],
-  searchTerm: string,
-  recentApps: string[],
-): App[] {
+function searchApps(apps: App[], searchTerm: string, recentApps: string[]): App[] {
   if (!searchTerm || searchTerm === " ") {
     return apps;
   }
 
   // Remove leading space if present
-  const cleanedTerm = searchTerm.startsWith(" ")
-    ? searchTerm.slice(1)
-    : searchTerm;
+  const cleanedTerm = searchTerm.startsWith(" ") ? searchTerm.slice(1) : searchTerm;
   if (!cleanedTerm) {
     return apps;
   }
@@ -356,9 +346,7 @@ function searchApps(
 
     // 4. Abbreviation match (e.g., 'vsc' for 'Visual Studio Code')
     const words = appNameLower.split(/[\s\-_]+/);
-    const abbreviation = words
-      .map((word) => word.charAt(0).toLowerCase())
-      .join("");
+    const abbreviation = words.map((word) => word.charAt(0).toLowerCase()).join("");
     if (abbreviation.includes(searchLower)) {
       score += 800;
     }
@@ -399,9 +387,7 @@ async function loadHotkeyAssignments(): Promise<Map<string, string>> {
 }
 
 // Save hotkey assignments to LocalStorage
-async function saveHotkeyAssignments(
-  assignments: Map<string, string>,
-): Promise<void> {
+async function saveHotkeyAssignments(assignments: Map<string, string>): Promise<void> {
   try {
     const obj = Object.fromEntries(assignments);
     await LocalStorage.setItem(HOTKEY_STORAGE_KEY, JSON.stringify(obj));
@@ -427,20 +413,14 @@ async function loadRecentApps(): Promise<string[]> {
 // Save recent apps to LocalStorage
 async function saveRecentApps(recentApps: string[]): Promise<void> {
   try {
-    await LocalStorage.setItem(
-      RECENT_APPS_STORAGE_KEY,
-      JSON.stringify(recentApps),
-    );
+    await LocalStorage.setItem(RECENT_APPS_STORAGE_KEY, JSON.stringify(recentApps));
   } catch (error) {
     console.error("Error saving recent apps:", error);
   }
 }
 
 // Add app to recent list
-async function addToRecentApps(
-  appName: string,
-  currentRecent: string[],
-): Promise<string[]> {
+async function addToRecentApps(appName: string, currentRecent: string[]): Promise<string[]> {
   // Remove app if it already exists
   const filtered = currentRecent.filter((name) => name !== appName);
   // Add to front
@@ -452,13 +432,7 @@ async function addToRecentApps(
   return trimmed;
 }
 
-function HotkeyAssignmentForm({
-  app,
-  onAssign,
-}: {
-  app: App;
-  onAssign: (hotkey: string) => Promise<void>;
-}) {
+function HotkeyAssignmentForm({ app, onAssign }: { app: App; onAssign: (hotkey: string) => Promise<void> }) {
   const [hotkey, setHotkey] = useState("");
   const { pop } = useNavigation();
 
@@ -497,9 +471,7 @@ export default function Command() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
-  const [hotkeyAssignments, setHotkeyAssignments] = useState<
-    Map<string, string>
-  >(new Map());
+  const [hotkeyAssignments, setHotkeyAssignments] = useState<Map<string, string>>(new Map());
   const [hotkeysLoaded, setHotkeysLoaded] = useState(false);
   const [recentApps, setRecentApps] = useState<string[]>([]);
   const { push } = useNavigation();
@@ -599,14 +571,20 @@ export default function Command() {
     setSearchText(text);
   }
 
+  // Create reverse hotkey map for O(1) lookups
+  const reverseHotkeyMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [hotkey, appName] of hotkeyAssignments.entries()) {
+      map.set(appName, hotkey);
+    }
+    return map;
+  }, [hotkeyAssignments]);
+
   useEffect(() => {
     async function loadData() {
       try {
         // Load hotkeys and recent apps first
-        const [assignments, recent] = await Promise.all([
-          loadHotkeyAssignments(),
-          loadRecentApps(),
-        ]);
+        const [assignments, recent] = await Promise.all([loadHotkeyAssignments(), loadRecentApps()]);
 
         setHotkeyAssignments(assignments);
         setHotkeysLoaded(true);
@@ -620,10 +598,7 @@ export default function Command() {
           setApps(allApps);
         }
       } catch (err) {
-        setError(
-          "Failed to get applications: " +
-            (err instanceof Error ? err.message : String(err)),
-        );
+        setError("Failed to get applications: " + (err instanceof Error ? err.message : String(err)));
       } finally {
         setIsLoading(false);
       }
@@ -641,18 +616,7 @@ export default function Command() {
   }
 
   // Get filtered apps based on search
-  const filteredApps = searchText
-    ? searchApps(apps, searchText, recentApps)
-    : apps;
-
-  // Create reverse hotkey map for O(1) lookups
-  const reverseHotkeyMap = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const [hotkey, appName] of hotkeyAssignments.entries()) {
-      map.set(appName, hotkey);
-    }
-    return map;
-  }, [hotkeyAssignments]);
+  const filteredApps = searchText ? searchApps(apps, searchText, recentApps) : apps;
 
   // Helper to get hotkey for an app
   function getHotkeyForApp(appName: string): string | undefined {
@@ -669,7 +633,7 @@ export default function Command() {
       {filteredApps.map((app) => {
         const hotkey = getHotkeyForApp(app.name);
         const appTitle = app.name;
-        var subtitle = "";
+        let subtitle = "";
         if (hotkey) {
           subtitle += `[${hotkey}] `;
         }
@@ -685,19 +649,11 @@ export default function Command() {
             icon={getAppIcon(app)}
             actions={
               <ActionPanel>
-                <Action
-                  title={app.isRunning ? "Switch" : "Launch"}
-                  onAction={() => handleSwitchToApp(app)}
-                />
+                <Action title={app.isRunning ? "Switch" : "Launch"} onAction={() => handleSwitchToApp(app)} />
                 <Action
                   title="Assign Hotkey"
                   onAction={() =>
-                    push(
-                      <HotkeyAssignmentForm
-                        app={app}
-                        onAssign={(hotkey) => assignHotkey(app, hotkey)}
-                      />,
-                    )
+                    push(<HotkeyAssignmentForm app={app} onAssign={(hotkey) => assignHotkey(app, hotkey)} />)
                   }
                   shortcut={{ modifiers: ["cmd"], key: "h" }}
                 />
